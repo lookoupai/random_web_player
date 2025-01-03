@@ -82,7 +82,37 @@ pip install requests beautifulsoup4
 可以获取到很多类似的地址，见下图：
 ![zoomeye](./zoomeye.png)
 
+# cursor修改版
 
+## 修改内容如下
+- 取消 dplayer 播放器
+- API添加视频标题
+- 手机浏览器观看可以上滑和下滑切换视频
+
+## 使用命令备忘
+
+创建Python虚拟环境
+```bash
+python -m venv venv
+```
+激活虚拟环境
+```bash
+source venv/bin/activate
+```
+安装依赖
+```bash
+pip install -r requirements.txt
+```
+
+运行 FastAPI 应用
+```bash
+uvicorn random_api:app --reload --host 0.0.0.0
+```
+
+退出Python虚拟环境
+```bash
+deactivate
+```
 
 ## License
 This project is provided under a GNU Affero General Public License v3.0 license that can be found in the [LICENSE](LICENSE) file. By using, distributing, or contributing to this project, you agree to the terms and conditions of this license.
