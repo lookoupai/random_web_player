@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1.0,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no">
     <title>视频播放器</title>
     <script src="https://s0.pstatp.com/cdn/expire-1-M/hls.js/0.10.1/hls.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.webstatic.cn/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="https://lf3-cdn-tos.bytecdntp.com/cdn/expire-1-M/font-awesome/5.15.4/css/all.min.css">
     <style>
         * {
             margin: 0;
@@ -23,18 +23,48 @@
 
         .player-container {
             width: 100%;
-            height: 100vh;
+            height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
             position: relative;
             background: #000;
             display: flex;
             align-items: center;
             justify-content: center;
+            padding-top: env(safe-area-inset-top, 0px);
+            padding-bottom: env(safe-area-inset-bottom, 0px);
         }
 
         video {
             width: 100%;
             height: 100%;
             object-fit: contain;
+        }
+
+        /* 竖屏视频全屏样式 */
+        .player-container.vertical-video {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+        }
+
+        .player-container.vertical-video video {
+            width: auto;
+            height: 100%;
+            max-width: 100%;
+        }
+
+        @media screen and (orientation: landscape) {
+            .player-container.vertical-video.fullscreen {
+                width: 100vh;
+                height: 100vh;
+                margin: 0 auto;
+            }
+            
+            .player-container.vertical-video.fullscreen video {
+                width: auto;
+                height: 100%;
+                max-width: 100%;
+            }
         }
 
         .video-title {
@@ -114,11 +144,11 @@
 
         .bottom-controls {
             position: fixed;
-            bottom: 0;
+            bottom: max(0px, env(safe-area-inset-bottom, 0px));
             left: 0;
             right: 0;
             background: rgba(0, 0, 0, 0.7);
-            padding: 10px 20px;
+            padding: 10px max(20px, env(safe-area-inset-right, 20px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 20px));
             display: flex;
             align-items: center;
             gap: 15px;
@@ -228,14 +258,14 @@
             .video-title {
                 font-size: 14px;
                 padding: 6px 12px;
-                bottom: 70px;
-                left: 15px;
+                bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+                left: max(15px, env(safe-area-inset-left, 15px));
                 max-width: 70%;
             }
 
             .controls {
                 right: max(15px, env(safe-area-inset-right, 15px));
-                bottom: 100px;
+                bottom: calc(100px + env(safe-area-inset-bottom, 0px));
                 padding: 12px 8px;
             }
 
@@ -248,12 +278,54 @@
             }
 
             .bottom-controls {
-                bottom: 30px;
+                bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+                gap: 10px;
+            }
+
+            .volume-control {
+                display: flex;
+                position: relative;
+            }
+
+            .volume-slider {
+                display: none;
+                position: absolute;
+                bottom: 40px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 100px;
+                height: 5px;
+                background: rgba(255, 255, 255, 0.3);
+                border-radius: 2.5px;
+                cursor: pointer;
+                z-index: 1001;
+            }
+
+            .volume-control:hover .volume-slider,
+            .volume-control:active .volume-slider {
+                display: block;
+            }
+
+            .progress-bar {
+                flex: 1;
+                min-width: 120px;
             }
 
             .next-button {
                 padding: 10px 20px;
                 font-size: 12px;
+            }
+
+            @media (max-width: 400px) {
+                .bottom-controls {
+                    gap: 5px;
+                    padding: 10px;
+                }
+                
+                .time-display {
+                    min-width: 80px;
+                    font-size: 12px;
+                }
             }
         }
     </style>
@@ -333,27 +405,45 @@
         };
 
         const debounceNext = debounce(() => {
-            playNext();
+            if (!isAnimating) {
+                playNext();
+            }
         }, 300);
 
         // 视频控制功能
-        function togglePlay() {
+        async function togglePlay() {
             if (!video) return;
             
-            if (video.paused) {
-                const playPromise = video.play();
-                if (playPromise !== undefined) {
-                    playPromise.then(() => {
-                        if (playPauseBtn) playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
-                        if (isMobile) {
+            try {
+                if (video.paused) {
+                    // 移动端特殊处理
+                    if (isMobile) {
+                        video.muted = true;
+                        const playPromise = video.play();
+                        if (playPromise !== undefined) {
+                            await playPromise;
+                            if (playPauseBtn) playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
+                            // 延迟取消静音
+                            setTimeout(() => {
+                                video.muted = false;
+                                scheduleHideControls();
+                            }, 300);
+                        }
+                    } else {
+                        const playPromise = video.play();
+                        if (playPromise !== undefined) {
+                            await playPromise;
+                            if (playPauseBtn) playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
                             scheduleHideControls();
                         }
-                    }).catch(error => {
-                        console.log("播放失败:", error);
-                    });
+                    }
+                } else {
+                    await video.pause();
+                    if (playPauseBtn) playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
+                    showControls();
                 }
-            } else {
-                video.pause();
+            } catch (error) {
+                console.log("播放控制失败:", error);
                 if (playPauseBtn) playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
                 showControls();
             }
@@ -475,8 +565,42 @@
             if (playPauseBtn) playPauseBtn.addEventListener('click', togglePlay);
             if (progressBar) progressBar.addEventListener('click', seek);
             if (progressHandle) progressHandle.addEventListener('mousedown', startDragging);
-            if (volumeSlider) volumeSlider.addEventListener('click', changeVolume);
-            if (volumeControl) volumeControl.addEventListener('click', toggleMute);
+            if (volumeSlider) {
+                if (isMobile) {
+                    volumeSlider.addEventListener('touchstart', (e) => {
+                        e.stopPropagation();
+                        const touch = e.touches[0];
+                        const rect = volumeSlider.getBoundingClientRect();
+                        let vol = (touch.clientX - rect.left) / rect.width;
+                        vol = Math.max(0, Math.min(1, vol));
+                        video.volume = vol;
+                        volumeProgress.style.width = `${vol * 100}%`;
+                        updateVolumeIcon(vol);
+                    });
+                } else {
+                    volumeSlider.addEventListener('click', changeVolume);
+                }
+            }
+            
+            if (volumeControl) {
+                if (isMobile) {
+                    volumeControl.addEventListener('touchstart', (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const volumeSlider = document.querySelector('.volume-slider');
+                        if (volumeSlider.style.display === 'block') {
+                            volumeSlider.style.display = 'none';
+                        } else {
+                            volumeSlider.style.display = 'block';
+                            setTimeout(() => {
+                                volumeSlider.style.display = 'none';
+                            }, 3000);
+                        }
+                    });
+                } else {
+                    volumeControl.addEventListener('click', toggleMute);
+                }
+            }
 
             video.addEventListener('timeupdate', updateProgress);
             video.addEventListener('play', () => {
@@ -503,9 +627,14 @@
 
             // 全屏按钮事件
             if (fullscreenBtn) {
-                fullscreenBtn.addEventListener('click', toggleFullscreen);
-                document.addEventListener('fullscreenchange', updateFullscreenButton);
-                document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+                fullscreenBtn.addEventListener('click', () => {
+                    if (!screenManager.isFullscreen()) {
+                        screenManager.checkOrientation();
+                        screenManager.enterFullscreen();
+                    } else {
+                        screenManager.exitFullscreen();
+                    }
+                });
             }
         }
 
@@ -542,40 +671,93 @@
             }
         }
 
-        // 检查URL是否可访问
-        async function checkUrl(url) {
-            try {
-                const response = await fetch(url, { method: 'HEAD', mode: 'no-cors' });
-                return true;
-            } catch (error) {
-                console.error('URL检查失败:', error);
-                return false;
-            }
-        }
-
         // 播放视频
         async function playVideo(videoData = null, direction = 'next') {
             if (isAnimating) return;
             isAnimating = true;
 
+            let playStarted = false;
+            let errorOccurred = false;
+            let timeout = null;
+            
+            // 处理视频加载完成事件
+            const handleLoadedMetadata = async () => {
+                if (!errorOccurred) {
+                    playStarted = true;
+                    if (timeout) clearTimeout(timeout);
+                    
+                    try {
+                        // 移动端特殊处理
+                        if (isMobile) {
+                            video.muted = true;
+                            await video.play();
+                            
+                            // 延迟取消静音
+                            setTimeout(async () => {
+                                if (!errorOccurred) {
+                                    video.muted = false;
+                                    clearTimeout(controlsTimeout);
+                                    controlsTimeout = setTimeout(hideControls, 1000);
+                                }
+                            }, 500);
+                        } else {
+                            // 桌面端直接播放
+                            await video.play();
+                        }
+                    } catch (e) {
+                        console.error('播放失败:', e);
+                        if (!errorOccurred) {
+                            errorOccurred = true;
+                            cleanupEventListeners();
+                            isAnimating = false;
+                            setTimeout(() => playNext(), 1000);
+                        }
+                    }
+                }
+            };
+
+            // 处理视频错误事件
+            const handleError = () => {
+                if (!errorOccurred) {
+                    console.error('视频加载错误');
+                    errorOccurred = true;
+                    if (timeout) clearTimeout(timeout);
+                    cleanupEventListeners();
+                    isAnimating = false;
+                    setTimeout(() => playNext(), 1000);
+                }
+            };
+
+            // 清理事件监听器
+            const cleanupEventListeners = () => {
+                video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+                video.removeEventListener('error', handleError);
+            };
+
+            const handlePlayError = (error) => {
+                console.error('播放失败:', error);
+                errorOccurred = true;
+                cleanupEventListeners();
+                if (timeout) clearTimeout(timeout);
+                isAnimating = false;
+                setTimeout(() => playNext(), 1000);
+            };
+
             try {
+                // 获取视频数据
                 if (!videoData) {
                     videoData = await getVideoUrl();
                     if (!videoData) {
-                        console.error('无法获取视频地址');
-                        isAnimating = false;
-                        setTimeout(() => playNext(), 1000);
+                        handlePlayError('无法获取视频地址');
                         return;
                     }
                 }
 
                 // 更新历史记录
-                if (direction === 'next') {
-                    if (lastVideoData) {
-                        currentHistoryIndex++;
-                        videoHistory.splice(currentHistoryIndex);
-                        videoHistory.push(lastVideoData);
-                    }
+                if (direction === 'next' && lastVideoData) {
+                    currentHistoryIndex++;
+                    videoHistory.splice(currentHistoryIndex);
+                    videoHistory.push(lastVideoData);
                     lastVideoData = videoData;
                 }
 
@@ -585,217 +767,94 @@
                     titleElement.textContent = videoData.title;
                 }
 
-                // 销毁旧的HLS实例
+                // 重置视频状态
                 if (hls) {
                     hls.destroy();
                     hls = null;
                 }
-
-                // 重置视频元素
-                video.src = '';
+                video.removeAttribute('src');
                 video.load();
+                try {
+                    await video.pause();
+                } catch (error) {
+                    console.log('暂停视频失败:', error);
+                }
+                await new Promise(resolve => setTimeout(resolve, 200));
 
-                let playStarted = false;
-                let errorOccurred = false;
+                // 添加事件监听
+                video.addEventListener('loadedmetadata', handleLoadedMetadata);
+                video.addEventListener('error', handleError);
 
                 // 设置超时检查
-                const timeout = setTimeout(() => {
+                timeout = setTimeout(() => {
                     if (!playStarted && !errorOccurred) {
-                        console.log('播放超时，切换下一个视频');
-                        errorOccurred = true;
-                        isAnimating = false;
-                        playNext();
+                        handlePlayError('播放超时');
                     }
                 }, 10000);
 
-                // 根据视频类型播放
-                if (videoData.url.includes('.m3u8')) {
-                    if (Hls.isSupported()) {
-                        hls = new Hls({
-                            debug: false,
-                            enableWorker: false,
-                            manifestLoadingTimeOut: 10000,
-                            manifestLoadingMaxRetry: 2,
-                            levelLoadingTimeOut: 10000,
-                            levelLoadingMaxRetry: 2,
-                            xhrSetup: function(xhr, url) {
-                                xhr.withCredentials = false;
-                            }
-                        });
+                // 播放视频
+                if (videoData.url.includes('.m3u8') && Hls.isSupported()) {
+                    hls = new Hls({
+                        debug: false,
+                        enableWorker: false,
+                        manifestLoadingTimeOut: 10000,
+                        manifestLoadingMaxRetry: 2,
+                        levelLoadingTimeOut: 10000,
+                        levelLoadingMaxRetry: 2,
+                        fragLoadingTimeOut: 10000,
+                        fragLoadingMaxRetry: 2,
+                        xhrSetup: xhr => xhr.withCredentials = false
+                    });
 
-                        let hlsError = false;
-                        
-                        hls.on(Hls.Events.ERROR, function(event, data) {
-                            console.log('HLS错误类型:', data.type);
-                            console.log('HLS错误详情:', data.details);
-                            
-                            if (!errorOccurred && (data.fatal || data.type === 'networkError')) {
-                                console.error('严重HLS错误，切换下一个视频');
-                                errorOccurred = true;
-                                hlsError = true;
-                                if (hls) {
-                                    hls.destroy();
-                                    hls = null;
-                                }
-                                clearTimeout(timeout);
-                                isAnimating = false;
-                                setTimeout(() => playNext(), 1000);
-                            }
-                        });
-
-                        hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                            if (!errorOccurred) {
-                                playStarted = true;
-                                clearTimeout(timeout);
-                                video.muted = true;
-                                video.play().then(() => {
-                                    setTimeout(() => {
-                                        if (!errorOccurred) {
-                                            video.muted = false;
-                                            if (isMobile) {
-                                                clearTimeout(controlsTimeout);
-                                                controlsTimeout = setTimeout(hideControls, 1000);
-                                            }
-                                        }
-                                    }, 500);
-                                }).catch(e => {
-                                    if (!errorOccurred) {
-                                        console.error('播放失败:', e);
-                                        errorOccurred = true;
-                                        isAnimating = false;
-                                        setTimeout(() => playNext(), 1000);
-                                    }
-                                });
-                            }
-                        });
-
-                        if (!errorOccurred) {
-                            try {
-                                hls.loadSource(videoData.url);
-                                hls.attachMedia(video);
-                            } catch (error) {
-                                console.error('HLS加载失败:', error);
-                                errorOccurred = true;
-                                isAnimating = false;
-                                setTimeout(() => playNext(), 1000);
-                            }
+                    hls.on(Hls.Events.ERROR, (event, data) => {
+                        if (data.fatal || data.type === 'networkError') {
+                            handlePlayError('HLS错误: ' + data.details);
                         }
-                    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                        video.src = videoData.url;
-                        video.addEventListener('loadedmetadata', function() {
-                            if (!errorOccurred) {
-                                playStarted = true;
-                                clearTimeout(timeout);
-                                video.muted = true;
-                                video.play().then(() => {
-                                    setTimeout(() => {
-                                        if (!errorOccurred) {
-                                            video.muted = false;
-                                            if (isMobile) {
-                                                clearTimeout(controlsTimeout);
-                                                controlsTimeout = setTimeout(hideControls, 1000);
-                                            }
-                                        }
-                                    }, 500);
-                                }).catch(e => {
-                                    if (!errorOccurred) {
-                                        console.error('播放失败:', e);
-                                        errorOccurred = true;
-                                        isAnimating = false;
-                                        setTimeout(() => playNext(), 1000);
-                                    }
-                                });
-                            }
-                        });
+                    });
 
-                        video.addEventListener('error', function() {
-                            if (!errorOccurred) {
-                                console.error('视频加载错误');
-                                errorOccurred = true;
-                                clearTimeout(timeout);
-                                isAnimating = false;
-                                setTimeout(() => playNext(), 1000);
-                            }
-                        });
-                    } else {
-                        console.error('浏览器不支持HLS播放');
-                        errorOccurred = true;
-                        clearTimeout(timeout);
-                        isAnimating = false;
-                        setTimeout(() => playNext(), 1000);
-                        return;
-                    }
-                } else {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    hls.loadSource(videoData.url);
+                    hls.attachMedia(video);
+                } else if (video.canPlayType('application/vnd.apple.mpegurl') || !videoData.url.includes('.m3u8')) {
                     video.src = videoData.url;
-                    video.addEventListener('loadedmetadata', function() {
-                        if (!errorOccurred) {
-                            playStarted = true;
-                            clearTimeout(timeout);
-                            video.muted = true;
-                            video.play().then(() => {
-                                setTimeout(() => {
-                                    if (!errorOccurred) {
-                                        video.muted = false;
-                                        if (isMobile) {
-                                            clearTimeout(controlsTimeout);
-                                            controlsTimeout = setTimeout(hideControls, 1000);
-                                        }
-                                    }
-                                }, 500);
-                            }).catch(e => {
-                                if (!errorOccurred) {
-                                    console.error('播放失败:', e);
-                                    errorOccurred = true;
-                                    isAnimating = false;
-                                    setTimeout(() => playNext(), 1000);
-                                }
-                            });
-                        }
-                    });
-
-                    video.addEventListener('error', function() {
-                        if (!errorOccurred) {
-                            console.error('视频加载错误');
-                            errorOccurred = true;
-                            clearTimeout(timeout);
-                            isAnimating = false;
-                            setTimeout(() => playNext(), 1000);
-                        }
-                    });
+                } else {
+                    handlePlayError('浏览器不支持HLS播放');
+                    return;
                 }
 
                 if (!errorOccurred) {
                     isAnimating = false;
                 }
-
             } catch (error) {
-                console.error('播放视频失败:', error);
-                isAnimating = false;
-                setTimeout(() => playNext(), 1000);
+                handlePlayError(error);
             }
         }
 
         // 播放下一个视频
         async function playNext() {
-            await playVideo(null, 'next');
+            if (!isAnimating) {
+                await playVideo(null, 'next');
+            }
         }
 
-        // 添加播放状态指示
-        if (video) {
-            video.addEventListener('play', () => {
-                if (playerContainer) {
-                    playerContainer.style.cursor = isMobile ? 'default' : 'default';
-                }
-            });
+        // 播放状态管理
+        const playStateManager = {
+            updateCursor() {
+                if (!playerContainer || isMobile) return;
+                playerContainer.style.cursor = video.paused ? 'pointer' : 'default';
+            },
 
-            video.addEventListener('pause', () => {
-                if (playerContainer) {
-                    playerContainer.style.cursor = isMobile ? 'default' : 'pointer';
-                }
-            });
-        }
+            init() {
+                if (!video) return;
+                video.addEventListener('play', () => this.updateCursor());
+                video.addEventListener('pause', () => this.updateCursor());
+            }
+        };
+
+        playStateManager.init();
 
         function handleTouchStart(e) {
+            if (isAnimating) return;
             touchStartTime = Date.now();
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
@@ -804,6 +863,8 @@
 
         function handleTouchMove(e) {
             if (isAnimating) return;
+            if (!touchStartX || !touchStartY) return;
+            
             const touchMoveY = e.touches[0].clientY;
             const touchMoveX = e.touches[0].clientX;
             const deltaY = touchMoveY - touchStartY;
@@ -812,6 +873,18 @@
             // 如果移动距离超过阈值，标记为已移动
             if (Math.abs(deltaY) > 10 || Math.abs(deltaX) > 10) {
                 touchMoved = true;
+                // 左右滑动控制音量
+                if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                    e.preventDefault();
+                    const width = window.innerWidth;
+                    const volumeChange = deltaX / (width / 2);
+                    let newVolume = video.volume + volumeChange;
+                    newVolume = Math.max(0, Math.min(1, newVolume));
+                    video.volume = newVolume;
+                    volumeProgress.style.width = `${newVolume * 100}%`;
+                    updateVolumeIcon(newVolume);
+                    showControls();
+                }
             }
 
             if (Math.abs(deltaY) > 30) {
@@ -820,6 +893,9 @@
         }
 
         function handleTouchEnd(e) {
+            if (isAnimating) return;
+            if (!touchStartX || !touchStartY) return;
+            
             const touchEndTime = Date.now();
             const touchEndX = e.changedTouches[0].clientX;
             const touchEndY = e.changedTouches[0].clientY;
@@ -827,6 +903,10 @@
             const touchDuration = touchEndTime - touchStartTime;
             const deltaY = touchEndY - touchStartY;
             const deltaX = touchEndX - touchStartX;
+
+            // 重置触摸起始点
+            touchStartX = null;
+            touchStartY = null;
 
             // 如果是滑动操作
             if (touchMoved) {
@@ -850,9 +930,6 @@
                         lastTapTime = touchEndTime;
                         showControls();
                         togglePlay();
-                        if (!video.paused) {
-                            scheduleHideControls();
-                        }
                     }
                 }
             }
@@ -867,54 +944,92 @@
             setTimeout(() => heart.remove(), 800);
         }
 
-        function toggleFullscreen() {
-            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        // 控制栏显示/隐藏管理
+        const controlsManager = {
+            show() {
+                if (playerContainer) {
+                    this.clearTimer();
+                    playerContainer.classList.add('controls-visible');
+                }
+            },
+            
+            hide() {
+                if (playerContainer && !video.paused) {
+                    this.clearTimer();
+                    playerContainer.classList.remove('controls-visible');
+                }
+            },
+            
+            schedule(delay = 1000) {
+                this.clearTimer();
+                if (!video.paused) {
+                    controlsTimeout = setTimeout(() => this.hide(), delay);
+                }
+            },
+            
+            clearTimer() {
+                if (controlsTimeout) {
+                    clearTimeout(controlsTimeout);
+                    controlsTimeout = null;
+                }
+            }
+        };
+
+        const showControls = () => controlsManager.show();
+        const hideControls = () => controlsManager.hide();
+        const scheduleHideControls = (delay) => controlsManager.schedule(delay);
+
+        // 视频方向和全屏管理
+        const screenManager = {
+            checkOrientation() {
+                if (!video || !playerContainer) return;
+                const isVertical = video.videoHeight > video.videoWidth;
+                playerContainer.classList.toggle('vertical-video', isVertical);
+            },
+
+            isFullscreen() {
+                return document.fullscreenElement || document.webkitFullscreenElement;
+            },
+
+            updateBtn() {
+                if (!fullscreenBtn) return;
+                const isFs = this.isFullscreen();
+                fullscreenBtn.innerHTML = `<i class="fas fa-${isFs ? 'compress' : 'expand'}"></i>`;
+            },
+
+            enterFullscreen() {
                 if (playerContainer.requestFullscreen) {
                     playerContainer.requestFullscreen();
                 } else if (playerContainer.webkitRequestFullscreen) {
                     playerContainer.webkitRequestFullscreen();
                 }
-            } else {
+                playerContainer.classList.add('fullscreen');
+                this.updateBtn();
+            },
+
+            exitFullscreen() {
                 if (document.exitFullscreen) {
                     document.exitFullscreen();
                 } else if (document.webkitExitFullscreen) {
                     document.webkitExitFullscreen();
                 }
-            }
-        }
+                playerContainer.classList.remove('fullscreen', 'vertical-video');
+                this.updateBtn();
+            },
 
-        // 更新全屏按钮图标
-        function updateFullscreenButton() {
-            if (!fullscreenBtn) return;
-            
-            if (document.fullscreenElement || document.webkitFullscreenElement) {
-                fullscreenBtn.innerHTML = '<i class="fas fa-compress"></i>';
-            } else {
-                fullscreenBtn.innerHTML = '<i class="fas fa-expand"></i>';
+            init() {
+                video.addEventListener('loadedmetadata', () => this.checkOrientation());
+                window.addEventListener('orientationchange', () => {
+                    if (this.isFullscreen()) {
+                        this.checkOrientation();
+                    }
+                });
+                document.addEventListener('fullscreenchange', () => this.updateBtn());
+                document.addEventListener('webkitfullscreenchange', () => this.updateBtn());
             }
-        }
+        };
 
-        function showControls() {
-            if (playerContainer) {
-                clearTimeout(controlsTimeout);
-                playerContainer.classList.add('controls-visible');
-            }
-        }
-
-        function hideControls() {
-            if (playerContainer && !video.paused) {
-                clearTimeout(controlsTimeout);
-                playerContainer.classList.remove('controls-visible');
-            }
-        }
-
-        // 统一管理控制栏隐藏的定时器
-        function scheduleHideControls(delay = 1000) {
-            clearTimeout(controlsTimeout);
-            if (!video.paused) {
-                controlsTimeout = setTimeout(hideControls, delay);
-            }
-        }
+        screenManager.init();
     </script>
 </body>
 </html> 
